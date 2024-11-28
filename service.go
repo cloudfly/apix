@@ -121,6 +121,7 @@ func UseGRPCHeaders(patterns []string) ServiceOption {
 	}
 }
 
+// Group represents a api group
 type Group struct {
 	prefix      string
 	mux         *http.ServeMux
@@ -233,21 +234,31 @@ func toHTTPHandlerFunc(handler any, middlewares []Middleware) http.HandlerFunc {
 
 		// response data
 		if data != nil {
-			value := reflect.ValueOf(data)
-			if value.Kind() == reflect.Slice && value.Len() == 0 {
-				data = []struct{}{}
+			if _, ok := data.(ResponseBody); ok {
+				// data's type is ResponseBody, response directly
+				responseJSON(w, 200, data)
+			} else {
+				value := reflect.ValueOf(data)
+				if value.Kind() == reflect.Slice && value.Len() == 0 {
+					// return empty array instread of null for nil slice
+					data = []struct{}{}
+				}
+				responseJSON(w, 200, ResponseBody{Code: 0, Data: data})
 			}
-			responseJSON(w, 200, ResponseBody{Code: 0, Data: data})
+			return
 		}
 
 		// response nothing
+		w.WriteHeader(http.StatusNoContent)
 	}
+
 	for i := len(middlewares) - 1; i >= 0; i-- {
 		h = middlewares[i](h)
 	}
 	return h
 }
 
+// Middleware wrap the http.HandlerFunc, so that it can handle the http.Request in advance and intercept the request if required(eg. authorization, logging)
 type Middleware func(http.HandlerFunc) http.HandlerFunc
 
 // ResponseBody represents data type in response body
