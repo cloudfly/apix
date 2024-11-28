@@ -267,11 +267,19 @@ func parseMessage(msgDescriptor protoreflect.MessageDescriptor, value string) (p
 			msg = timestamppb.New(t)
 		}
 	case "google.protobuf.Duration":
-		d, err := time.ParseDuration(value)
+		millis, err := DurationValue(value, 0)
 		if err != nil {
-			return protoreflect.Value{}, err
+			d, err := time.ParseDuration(value)
+			if err != nil {
+				return protoreflect.Value{}, err
+			}
+			msg = durationpb.New(d)
+		} else {
+			secs := millis / 1e3
+			nanos := millis % 1e3 * 1e6
+			msg = &durationpb.Duration{Seconds: int64(secs), Nanos: int32(nanos)}
 		}
-		msg = durationpb.New(d)
+
 	case "google.protobuf.DoubleValue":
 		v, err := strconv.ParseFloat(value, 64)
 		if err != nil {

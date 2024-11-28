@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"path"
 	"reflect"
 	"time"
 
@@ -16,6 +17,7 @@ type Service struct {
 	mux                *http.ServeMux
 	grpc               *grpcHandler
 	grpcHeaderPatterns []string
+	middlewares        []Middleware
 	NotFoundHandler    http.Handler
 }
 
@@ -34,17 +36,44 @@ func New(opts ...ServiceOption) *Service {
 	return srv
 }
 
-func (srv *Service) ANY(path string, h any)    { srv.mux.Handle(path, toHTTPHandlerFunc(h)) }
-func (srv *Service) GET(path string, h any)    { srv.mux.Handle("GET "+path, toHTTPHandlerFunc(h)) }
-func (srv *Service) POST(path string, h any)   { srv.mux.Handle("POST "+path, toHTTPHandlerFunc(h)) }
-func (srv *Service) PUT(path string, h any)    { srv.mux.Handle("PUT "+path, toHTTPHandlerFunc(h)) }
-func (srv *Service) PATCH(path string, h any)  { srv.mux.Handle("PATCH "+path, toHTTPHandlerFunc(h)) }
-func (srv *Service) DELETE(path string, h any) { srv.mux.Handle("DELETE "+path, toHTTPHandlerFunc(h)) }
-func (srv *Service) TRACE(path string, h any)  { srv.mux.Handle("TRACE "+path, toHTTPHandlerFunc(h)) }
-func (srv *Service) HEAD(path string, h any)   { srv.mux.Handle("HEAD "+path, toHTTPHandlerFunc(h)) }
-func (srv *Service) OPTION(path string, h any) { srv.mux.Handle("OPTION "+path, toHTTPHandlerFunc(h)) }
+func (srv *Service) ANY(path string, h any) {
+	srv.mux.Handle(path, toHTTPHandlerFunc(h, srv.middlewares))
+}
+func (srv *Service) GET(path string, h any) {
+	srv.mux.Handle("GET "+path, toHTTPHandlerFunc(h, srv.middlewares))
+}
+func (srv *Service) POST(path string, h any) {
+	srv.mux.Handle("POST "+path, toHTTPHandlerFunc(h, srv.middlewares))
+}
+func (srv *Service) PUT(path string, h any) {
+	srv.mux.Handle("PUT "+path, toHTTPHandlerFunc(h, srv.middlewares))
+}
+func (srv *Service) PATCH(path string, h any) {
+	srv.mux.Handle("PATCH "+path, toHTTPHandlerFunc(h, srv.middlewares))
+}
+func (srv *Service) DELETE(path string, h any) {
+	srv.mux.Handle("DELETE "+path, toHTTPHandlerFunc(h, srv.middlewares))
+}
+func (srv *Service) TRACE(path string, h any) {
+	srv.mux.Handle("TRACE "+path, toHTTPHandlerFunc(h, srv.middlewares))
+}
+func (srv *Service) HEAD(path string, h any) {
+	srv.mux.Handle("HEAD "+path, toHTTPHandlerFunc(h, srv.middlewares))
+}
+func (srv *Service) OPTION(path string, h any) {
+	srv.mux.Handle("OPTION "+path, toHTTPHandlerFunc(h, srv.middlewares))
+}
 func (srv *Service) CONNECT(path string, h any) {
-	srv.mux.Handle("CONNECT "+path, toHTTPHandlerFunc(h))
+	srv.mux.Handle("CONNECT "+path, toHTTPHandlerFunc(h, srv.middlewares))
+}
+
+// GROUP create a api group with custom url prefix and middlewares, the middlewares only works on handlers registerd on this group
+func (srv *Service) GROUP(path string, middlewares ...Middleware) *Group {
+	return &Group{
+		prefix:      path,
+		mux:         srv.mux,
+		middlewares: append(append([]Middleware{}, srv.middlewares...), middlewares...),
+	}
 }
 
 // GRPCGatewayMux return the grpcgateway servemux, use it to register grpc service
@@ -77,6 +106,13 @@ func WithNotFoundHandler(h http.Handler) ServiceOption {
 	}
 }
 
+// WithMiddleware specifics middlewares for all the service handlers.
+func WithMiddleware(middlewares ...Middleware) ServiceOption {
+	return func(srv *Service) {
+		srv.middlewares = middlewares
+	}
+}
+
 // UseGRPCHeaders extends the http headers whould to be forward to grpc service.
 // By default, only headers with 'grpcgateway-' key prefix, and permanent HTTP header(as specified by the IANA, e.g: Accept, Cookie, Host) will be forward.
 func UseGRPCHeaders(patterns []string) ServiceOption {
@@ -85,7 +121,53 @@ func UseGRPCHeaders(patterns []string) ServiceOption {
 	}
 }
 
-func toHTTPHandlerFunc(handler any) http.HandlerFunc {
+type Group struct {
+	prefix      string
+	mux         *http.ServeMux
+	middlewares []Middleware
+}
+
+func (g *Group) ANY(p string, h any) {
+	g.mux.Handle(path.Join(g.prefix, p), toHTTPHandlerFunc(h, g.middlewares))
+}
+func (g *Group) GET(p string, h any) {
+	g.mux.Handle("GET "+path.Join(g.prefix, p), toHTTPHandlerFunc(h, g.middlewares))
+}
+func (g *Group) POST(p string, h any) {
+	g.mux.Handle("POST "+path.Join(g.prefix, p), toHTTPHandlerFunc(h, g.middlewares))
+}
+func (g *Group) PUT(p string, h any) {
+	g.mux.Handle("PUT "+path.Join(g.prefix, p), toHTTPHandlerFunc(h, g.middlewares))
+}
+func (g *Group) PATCH(p string, h any) {
+	g.mux.Handle("PATCH "+path.Join(g.prefix, p), toHTTPHandlerFunc(h, g.middlewares))
+}
+func (g *Group) DELETE(p string, h any) {
+	g.mux.Handle("DELETE "+path.Join(g.prefix, p), toHTTPHandlerFunc(h, g.middlewares))
+}
+func (g *Group) TRACE(p string, h any) {
+	g.mux.Handle("TRACE "+path.Join(g.prefix, p), toHTTPHandlerFunc(h, g.middlewares))
+}
+func (g *Group) HEAD(p string, h any) {
+	g.mux.Handle("HEAD "+path.Join(g.prefix, p), toHTTPHandlerFunc(h, g.middlewares))
+}
+func (g *Group) OPTION(p string, h any) {
+	g.mux.Handle("OPTION "+path.Join(g.prefix, p), toHTTPHandlerFunc(h, g.middlewares))
+}
+func (g *Group) CONNECT(p string, h any) {
+	g.mux.Handle("CONNECT "+p, toHTTPHandlerFunc(h, g.middlewares))
+}
+
+// GROUP create a sub group base on this group. The url path and middlewares in arguments will append to the parent group's path and middlewares
+func (g *Group) GROUP(p string, middlewares ...Middleware) *Group {
+	return &Group{
+		prefix:      path.Join(g.prefix, p),
+		mux:         g.mux,
+		middlewares: append(append([]Middleware{}, g.middlewares...), middlewares...),
+	}
+}
+
+func toHTTPHandlerFunc(handler any, middlewares []Middleware) http.HandlerFunc {
 	switch handler.(type) {
 	case Handler:
 	case HandlerCode:
@@ -99,7 +181,7 @@ func toHTTPHandlerFunc(handler any) http.HandlerFunc {
 		t = t.Elem()
 	}
 
-	return func(w http.ResponseWriter, req *http.Request) {
+	h := func(w http.ResponseWriter, req *http.Request) {
 		var (
 			start  = time.Now()
 			err    error
@@ -160,7 +242,13 @@ func toHTTPHandlerFunc(handler any) http.HandlerFunc {
 
 		// response nothing
 	}
+	for i := len(middlewares) - 1; i >= 0; i-- {
+		h = middlewares[i](h)
+	}
+	return h
 }
+
+type Middleware func(http.HandlerFunc) http.HandlerFunc
 
 // ResponseBody represents data type in response body
 type ResponseBody struct {
