@@ -3,6 +3,7 @@ package apix
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -25,7 +26,7 @@ func (h *statusHijack) WriteHeader(code int) {
 		h.hijacked = true
 		return
 	}
-	h.WriteHeader(code)
+	h.ResponseWriter.WriteHeader(code)
 }
 
 func (h *statusHijack) Write(body []byte) (int, error) {
@@ -36,23 +37,22 @@ func (h *statusHijack) Write(body []byte) (int, error) {
 		}
 		return len(body), nil
 	}
-	return h.Write(body)
+	return h.ResponseWriter.Write(body)
 }
 
 type grpcHandler struct {
-	mux             *runtime.ServeMux
-	notFoundHandler http.Handler
-	headerPatterns  []string
+	srv *Service
+	mux *runtime.ServeMux
 }
 
-func newGRPCHandler(headerPatterns []string) *grpcHandler {
+func newGRPCHandler(srv *Service) *grpcHandler {
 	gh := &grpcHandler{
 		mux: runtime.NewServeMux(
 			runtime.WithMarshalerOption(
 				runtime.MIMEWildcard, &runtime.JSONBuiltin{},
 			),
 			runtime.SetQueryParameterParser(&queryParser{}),
-			runtime.WithIncomingHeaderMatcher(grpcHeaderMatcher(headerPatterns)),
+			runtime.WithIncomingHeaderMatcher(grpcHeaderMatcher(srv.grpcHeaderPatterns)),
 			runtime.WithErrorHandler(func(ctx context.Context, mux *runtime.ServeMux, _ runtime.Marshaler, w http.ResponseWriter, r *http.Request, err error) {
 				data := ResponseBody{
 					Code:    1,
@@ -70,16 +70,18 @@ func newGRPCHandler(headerPatterns []string) *grpcHandler {
 			}),
 		),
 	}
+	gh.srv = srv
 	return gh
 }
 
 func (gh *grpcHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if gh.notFoundHandler != nil {
+	fmt.Println(gh, gh.srv)
+	if gh.srv.notFoundHandler != nil {
 		w = &statusHijack{
 			ResponseWriter: w,
 			req:            r,
 			targetCode:     http.StatusNotFound,
-			handler:        gh.notFoundHandler,
+			handler:        gh.srv.notFoundHandler,
 		}
 	}
 	gh.mux.ServeHTTP(w, r)

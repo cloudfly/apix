@@ -17,6 +17,7 @@ type Service struct {
 	mux                *http.ServeMux
 	grpc               *grpcHandler
 	grpcHeaderPatterns []string
+	notFoundHandler    http.Handler
 	middlewares        []Middleware
 	marshaler          func(data any) ([]byte, error)
 }
@@ -29,12 +30,12 @@ const (
 func New(opts ...ServiceOption) *Service {
 	srv := &Service{
 		marshaler: json.Marshal,
+		mux:       http.NewServeMux(),
 	}
 	for _, opt := range opts {
 		opt(srv)
 	}
-	srv.mux = http.NewServeMux()
-	srv.grpc = newGRPCHandler(srv.grpcHeaderPatterns)
+	srv.grpc = newGRPCHandler(srv)
 	return srv
 }
 
@@ -112,7 +113,7 @@ type ServiceOption func(*Service)
 // WithNotFoundHandler specifics a http handler for 404 case.
 func WithNotFoundHandler(h http.Handler) ServiceOption {
 	return func(srv *Service) {
-		srv.grpc.notFoundHandler = h
+		srv.notFoundHandler = h
 	}
 }
 
@@ -185,13 +186,18 @@ func (g *Group) GROUP(p string, middlewares ...Middleware) *Group {
 }
 
 func (srv *Service) generateHandlerFunc(handler any, middlewares []Middleware) http.HandlerFunc {
+	htype := 0
 	switch handler.(type) {
 	case Handler:
+		htype = 1
 	case HandlerCode:
+		htype = 2
 	case http.HandlerFunc:
+		htype = 3
 	case http.Handler:
+		htype = 4
 	default:
-		panic("wrong type of handler, it should implements apix.Handler or apix.HandlerCode interface")
+		panic("wrong type of handler, it should implements apix.Handler, apix.HandlerCode or http.Handler interface")
 	}
 
 	t := reflect.TypeOf(handler)
@@ -226,18 +232,18 @@ func (srv *Service) generateHandlerFunc(handler any, middlewares []Middleware) h
 		}
 
 		// execute the handler
-		switch h := v.(type) {
-		case Handler:
-			data, err = h.Execute(ctx)
-		case HandlerCode:
-			data, status, err = h.ExecuteCode(ctx)
-		case http.HandlerFunc:
+		switch htype {
+		case 1:
+			data, err = v.(Handler).Execute(ctx)
+		case 2:
+			data, status, err = v.(HandlerCode).ExecuteCode(ctx)
+		case 3:
 			// original http handler func
-			h(ctx.Writer, ctx.Request)
+			handler.(http.HandlerFunc)(ctx.Writer, ctx.Request)
 			return
-		case http.Handler:
+		case 4:
 			// original http handler
-			h.ServeHTTP(ctx.Writer, ctx.Request)
+			handler.(http.Handler).ServeHTTP(ctx.Writer, ctx.Request)
 			return
 		}
 
