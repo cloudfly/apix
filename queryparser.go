@@ -226,7 +226,7 @@ func parseField(fieldDescriptor protoreflect.FieldDescriptor, value string) (pro
 	case protoreflect.StringKind:
 		return protoreflect.ValueOfString(value), nil
 	case protoreflect.BytesKind:
-		v, err := Bytes(value)
+		v, err := decodeStr2Bytes(value)
 		if err != nil {
 			return protoreflect.Value{}, err
 		}
@@ -325,7 +325,7 @@ func parseMessage(msgDescriptor protoreflect.MessageDescriptor, value string) (p
 	case "google.protobuf.StringValue":
 		msg = wrapperspb.String(value)
 	case "google.protobuf.BytesValue":
-		v, err := Bytes(value)
+		v, err := decodeStr2Bytes(value)
 		if err != nil {
 			return protoreflect.Value{}, err
 		}
@@ -361,9 +361,9 @@ func parseMessage(msgDescriptor protoreflect.MessageDescriptor, value string) (p
 	return protoreflect.ValueOfMessage(msg.ProtoReflect()), nil
 }
 
-// Bytes converts the given string representation of a byte sequence into a slice of bytes
+// decodeStr2Bytes converts the given string representation of a byte sequence into a slice of bytes
 // A bytes sequence is encoded in URL-safe base64 without padding
-func Bytes(val string) ([]byte, error) {
+func decodeStr2Bytes(val string) ([]byte, error) {
 	b, err := base64.StdEncoding.DecodeString(val)
 	if err != nil {
 		b, err = base64.URLEncoding.DecodeString(val)
