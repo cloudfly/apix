@@ -8,13 +8,13 @@ import (
 	"unicode"
 )
 
-// DurationValue returns the duration in milliseconds for the given s
+// durationValue returns the duration in milliseconds for the given s
 // and the given step.
 //
 // Duration in s may be combined, i.e. 2h5m, -2h5m or 2h-5m.
 //
 // The returned duration value can be negative.
-func DurationValue(s string, step int64) (int64, error) {
+func durationValue(s string, step int64) (int64, error) {
 	if len(s) == 0 {
 		return 0, fmt.Errorf("duration cannot be empty")
 	}

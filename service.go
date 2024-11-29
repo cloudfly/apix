@@ -18,6 +18,7 @@ type Service struct {
 	grpc               *grpcHandler
 	grpcHeaderPatterns []string
 	middlewares        []Middleware
+	marshaler          func(data any) ([]byte, error)
 	NotFoundHandler    http.Handler
 }
 
@@ -27,7 +28,9 @@ const (
 )
 
 func New(opts ...ServiceOption) *Service {
-	srv := &Service{}
+	srv := &Service{
+		marshaler: json.Marshal,
+	}
 	for _, opt := range opts {
 		opt(srv)
 	}
@@ -37,41 +40,41 @@ func New(opts ...ServiceOption) *Service {
 }
 
 func (srv *Service) ANY(path string, h any) {
-	srv.mux.Handle(path, toHTTPHandlerFunc(h, srv.middlewares))
+	srv.mux.Handle(path, srv.generateHandlerFunc(h, srv.middlewares))
 }
 func (srv *Service) GET(path string, h any) {
-	srv.mux.Handle("GET "+path, toHTTPHandlerFunc(h, srv.middlewares))
+	srv.mux.Handle("GET "+path, srv.generateHandlerFunc(h, srv.middlewares))
 }
 func (srv *Service) POST(path string, h any) {
-	srv.mux.Handle("POST "+path, toHTTPHandlerFunc(h, srv.middlewares))
+	srv.mux.Handle("POST "+path, srv.generateHandlerFunc(h, srv.middlewares))
 }
 func (srv *Service) PUT(path string, h any) {
-	srv.mux.Handle("PUT "+path, toHTTPHandlerFunc(h, srv.middlewares))
+	srv.mux.Handle("PUT "+path, srv.generateHandlerFunc(h, srv.middlewares))
 }
 func (srv *Service) PATCH(path string, h any) {
-	srv.mux.Handle("PATCH "+path, toHTTPHandlerFunc(h, srv.middlewares))
+	srv.mux.Handle("PATCH "+path, srv.generateHandlerFunc(h, srv.middlewares))
 }
 func (srv *Service) DELETE(path string, h any) {
-	srv.mux.Handle("DELETE "+path, toHTTPHandlerFunc(h, srv.middlewares))
+	srv.mux.Handle("DELETE "+path, srv.generateHandlerFunc(h, srv.middlewares))
 }
 func (srv *Service) TRACE(path string, h any) {
-	srv.mux.Handle("TRACE "+path, toHTTPHandlerFunc(h, srv.middlewares))
+	srv.mux.Handle("TRACE "+path, srv.generateHandlerFunc(h, srv.middlewares))
 }
 func (srv *Service) HEAD(path string, h any) {
-	srv.mux.Handle("HEAD "+path, toHTTPHandlerFunc(h, srv.middlewares))
+	srv.mux.Handle("HEAD "+path, srv.generateHandlerFunc(h, srv.middlewares))
 }
 func (srv *Service) OPTION(path string, h any) {
-	srv.mux.Handle("OPTION "+path, toHTTPHandlerFunc(h, srv.middlewares))
+	srv.mux.Handle("OPTION "+path, srv.generateHandlerFunc(h, srv.middlewares))
 }
 func (srv *Service) CONNECT(path string, h any) {
-	srv.mux.Handle("CONNECT "+path, toHTTPHandlerFunc(h, srv.middlewares))
+	srv.mux.Handle("CONNECT "+path, srv.generateHandlerFunc(h, srv.middlewares))
 }
 
 // GROUP create a api group with custom url prefix and middlewares, the middlewares only works on handlers registerd on this group
 func (srv *Service) GROUP(path string, middlewares ...Middleware) *Group {
 	return &Group{
 		prefix:      path,
-		mux:         srv.mux,
+		srv:         srv,
 		middlewares: append(append([]Middleware{}, srv.middlewares...), middlewares...),
 	}
 }
@@ -91,6 +94,14 @@ func (srv *Service) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		handler:        srv.grpc,
 	}
 	srv.mux.ServeHTTP(&notFoundHijack, req)
+}
+
+func (srv *Service) newCtx(w http.ResponseWriter, r *http.Request) *Context {
+	return &Context{
+		Request: r,
+		Writer:  w,
+		srv:     srv,
+	}
 }
 
 func (srv *Service) ListenAndServe(addr string) error {
@@ -113,9 +124,15 @@ func WithMiddleware(middlewares ...Middleware) ServiceOption {
 	}
 }
 
+func WithResponseMarshaler(marshaler func(any) ([]byte, error)) ServiceOption {
+	return func(srv *Service) {
+		srv.marshaler = marshaler
+	}
+}
+
 // UseGRPCHeaders extends the http headers whould to be forward to grpc service.
 // By default, only headers with 'grpcgateway-' key prefix, and permanent HTTP header(as specified by the IANA, e.g: Accept, Cookie, Host) will be forward.
-func UseGRPCHeaders(patterns []string) ServiceOption {
+func UseGRPCHeaders(patterns ...string) ServiceOption {
 	return func(srv *Service) {
 		srv.grpc.headerPatterns = patterns
 	}
@@ -123,55 +140,56 @@ func UseGRPCHeaders(patterns []string) ServiceOption {
 
 // Group represents a api group
 type Group struct {
+	srv         *Service
 	prefix      string
-	mux         *http.ServeMux
 	middlewares []Middleware
 }
 
 func (g *Group) ANY(p string, h any) {
-	g.mux.Handle(path.Join(g.prefix, p), toHTTPHandlerFunc(h, g.middlewares))
+	g.srv.mux.Handle(path.Join(g.prefix, p), g.srv.generateHandlerFunc(h, g.middlewares))
 }
 func (g *Group) GET(p string, h any) {
-	g.mux.Handle("GET "+path.Join(g.prefix, p), toHTTPHandlerFunc(h, g.middlewares))
+	g.srv.mux.Handle("GET "+path.Join(g.prefix, p), g.srv.generateHandlerFunc(h, g.middlewares))
 }
 func (g *Group) POST(p string, h any) {
-	g.mux.Handle("POST "+path.Join(g.prefix, p), toHTTPHandlerFunc(h, g.middlewares))
+	g.srv.mux.Handle("POST "+path.Join(g.prefix, p), g.srv.generateHandlerFunc(h, g.middlewares))
 }
 func (g *Group) PUT(p string, h any) {
-	g.mux.Handle("PUT "+path.Join(g.prefix, p), toHTTPHandlerFunc(h, g.middlewares))
+	g.srv.mux.Handle("PUT "+path.Join(g.prefix, p), g.srv.generateHandlerFunc(h, g.middlewares))
 }
 func (g *Group) PATCH(p string, h any) {
-	g.mux.Handle("PATCH "+path.Join(g.prefix, p), toHTTPHandlerFunc(h, g.middlewares))
+	g.srv.mux.Handle("PATCH "+path.Join(g.prefix, p), g.srv.generateHandlerFunc(h, g.middlewares))
 }
 func (g *Group) DELETE(p string, h any) {
-	g.mux.Handle("DELETE "+path.Join(g.prefix, p), toHTTPHandlerFunc(h, g.middlewares))
+	g.srv.mux.Handle("DELETE "+path.Join(g.prefix, p), g.srv.generateHandlerFunc(h, g.middlewares))
 }
 func (g *Group) TRACE(p string, h any) {
-	g.mux.Handle("TRACE "+path.Join(g.prefix, p), toHTTPHandlerFunc(h, g.middlewares))
+	g.srv.mux.Handle("TRACE "+path.Join(g.prefix, p), g.srv.generateHandlerFunc(h, g.middlewares))
 }
 func (g *Group) HEAD(p string, h any) {
-	g.mux.Handle("HEAD "+path.Join(g.prefix, p), toHTTPHandlerFunc(h, g.middlewares))
+	g.srv.mux.Handle("HEAD "+path.Join(g.prefix, p), g.srv.generateHandlerFunc(h, g.middlewares))
 }
 func (g *Group) OPTION(p string, h any) {
-	g.mux.Handle("OPTION "+path.Join(g.prefix, p), toHTTPHandlerFunc(h, g.middlewares))
+	g.srv.mux.Handle("OPTION "+path.Join(g.prefix, p), g.srv.generateHandlerFunc(h, g.middlewares))
 }
 func (g *Group) CONNECT(p string, h any) {
-	g.mux.Handle("CONNECT "+p, toHTTPHandlerFunc(h, g.middlewares))
+	g.srv.mux.Handle("CONNECT "+p, g.srv.generateHandlerFunc(h, g.middlewares))
 }
 
 // GROUP create a sub group base on this group. The url path and middlewares in arguments will append to the parent group's path and middlewares
 func (g *Group) GROUP(p string, middlewares ...Middleware) *Group {
 	return &Group{
 		prefix:      path.Join(g.prefix, p),
-		mux:         g.mux,
+		srv:         g.srv,
 		middlewares: append(append([]Middleware{}, g.middlewares...), middlewares...),
 	}
 }
 
-func toHTTPHandlerFunc(handler any, middlewares []Middleware) http.HandlerFunc {
+func (srv *Service) generateHandlerFunc(handler any, middlewares []Middleware) http.HandlerFunc {
 	switch handler.(type) {
 	case Handler:
 	case HandlerCode:
+	case http.HandlerFunc:
 	case http.Handler:
 	default:
 		panic("wrong type of handler, it should implements apix.Handler or apix.HandlerCode interface")
@@ -182,11 +200,11 @@ func toHTTPHandlerFunc(handler any, middlewares []Middleware) http.HandlerFunc {
 		t = t.Elem()
 	}
 
-	h := func(w http.ResponseWriter, req *http.Request) {
+	h := func(w http.ResponseWriter, r *http.Request) {
 		var (
 			start  = time.Now()
 			err    error
-			ctx    = req.Context()
+			ctx    = srv.newCtx(w, r)
 			v      = reflect.New(t).Interface()
 			data   any
 			status = 0
@@ -195,13 +213,13 @@ func toHTTPHandlerFunc(handler any, middlewares []Middleware) http.HandlerFunc {
 		// access log
 		defer func() {
 			log.Ctx(ctx).Info().Err(err).Any("params", v).Dur("cost", time.Since(start)).Int("code", status).
-				Str("method", req.Method).Str("path", req.URL.Path).Msg("HTTP request")
+				Str("method", r.Method).Str("path", r.URL.Path).Msg("HTTP request")
 		}()
 
 		// parse the parameters from request
-		err = binding.New(nil).BindAndValidate(v, req, pathParams{req: req})
+		err = binding.New(nil).BindAndValidate(v, r, pathParams{req: r})
 		if err != nil {
-			responseJSON(w, 400, ResponseBody{
+			ctx.JSON(400, ResponseBody{
 				Code:    400,
 				Message: err.Error(),
 			})
@@ -211,12 +229,16 @@ func toHTTPHandlerFunc(handler any, middlewares []Middleware) http.HandlerFunc {
 		// execute the handler
 		switch h := v.(type) {
 		case Handler:
-			data, err = h.Execute(req)
+			data, err = h.Execute(ctx)
 		case HandlerCode:
-			data, status, err = h.ExecuteCode(req)
+			data, status, err = h.ExecuteCode(ctx)
+		case http.HandlerFunc:
+			// original http handler func
+			h(ctx.Writer, ctx.Request)
+			return
 		case http.Handler:
 			// original http handler
-			h.ServeHTTP(w, req)
+			h.ServeHTTP(ctx.Writer, ctx.Request)
 			return
 		}
 
@@ -225,7 +247,7 @@ func toHTTPHandlerFunc(handler any, middlewares []Middleware) http.HandlerFunc {
 			if status == 0 {
 				status = 1
 			}
-			responseJSON(w, 200, ResponseBody{
+			ctx.JSON(200, ResponseBody{
 				Code:    status,
 				Message: err.Error(),
 			})
@@ -236,14 +258,14 @@ func toHTTPHandlerFunc(handler any, middlewares []Middleware) http.HandlerFunc {
 		if data != nil {
 			if _, ok := data.(ResponseBody); ok {
 				// data's type is ResponseBody, response directly
-				responseJSON(w, 200, data)
+				ctx.JSON(200, data)
 			} else {
 				value := reflect.ValueOf(data)
 				if value.Kind() == reflect.Slice && value.Len() == 0 {
 					// return empty array instread of null for nil slice
 					data = []struct{}{}
 				}
-				responseJSON(w, 200, ResponseBody{Code: 0, Data: data})
+				ctx.JSON(200, ResponseBody{Code: 0, Data: data})
 			}
 			return
 		}
@@ -278,12 +300,12 @@ func (reb ResponseBody) Error() string {
 
 // Handler is a function type for handling http.Request, the return value will be marshaled into json before writing into response.
 type Handler interface {
-	Execute(req *http.Request) (any, error)
+	Execute(*Context) (any, error)
 }
 
 // HandlerCode is similar with apix.Handler, but can customze the http status code in response by the second return value.
 type HandlerCode interface {
-	ExecuteCode(req *http.Request) (any, int, error)
+	ExecuteCode(*Context) (any, int, error)
 }
 
 // pathParams implements the binding.PathParams interface for http.Request, so that the binding.BindAndValidate can parse the parameters in the request path.
@@ -297,19 +319,4 @@ type pathParams struct {
 func (pp pathParams) Get(name string) (string, bool) {
 	value := pp.req.PathValue(name)
 	return value, true
-}
-
-func responseJSON(w http.ResponseWriter, code int, data any) {
-	content, err := json.Marshal(data)
-	if err != nil {
-		content, _ = json.Marshal(ResponseBody{
-			Code:    1,
-			Message: err.Error(),
-		})
-	}
-	if code <= 0 {
-		code = 200
-	}
-	w.WriteHeader(code)
-	w.Write(content)
 }

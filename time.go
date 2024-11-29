@@ -54,7 +54,7 @@ func ParseTimeAt(s string, currentTimestamp float64) (float64, error) {
 	if len(s) > 0 && (s[len(s)-1] > '9' || s[0] == '-') || strings.HasPrefix(s, "now") {
 		// Parse duration relative to the current time
 		s = strings.TrimPrefix(s, "now")
-		d, err := DurationValue(s, 0)
+		d, err := durationValue(s, 0)
 		if err != nil {
 			return 0, err
 		}

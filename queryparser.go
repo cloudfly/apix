@@ -267,7 +267,7 @@ func parseMessage(msgDescriptor protoreflect.MessageDescriptor, value string) (p
 			msg = timestamppb.New(t)
 		}
 	case "google.protobuf.Duration":
-		millis, err := DurationValue(value, 0)
+		millis, err := durationValue(value, 0)
 		if err != nil {
 			d, err := time.ParseDuration(value)
 			if err != nil {
