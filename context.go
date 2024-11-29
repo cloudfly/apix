@@ -1,6 +1,7 @@
 package apix
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,13 +14,12 @@ var (
 	bbp *ByteBufferPool = &ByteBufferPool{}
 )
 
-type CtxKeyType int
+type ctxKeyType int
 
 // ContextKey is the key that a Context returns itself for.
 
 const (
-	ContextRequestKey CtxKeyType = 0
-	ContextKey                   = 1
+	contextKey = 1
 )
 
 // Context is the most important part of gin. It allows us to pass variables between middleware,
@@ -34,6 +34,15 @@ type Context struct {
 	returned bool
 }
 
+// Ctx peek *apix.Context from the given context, it return nil if *apix.Context not exist
+func Ctx(ctx context.Context) *Context {
+	v := ctx.Value(contextKey)
+	if v == nil {
+		return nil
+	}
+	return v.(*Context)
+}
+
 func (c *Context) reset() {
 	c.Request = nil
 	c.Writer = nil
@@ -44,6 +53,12 @@ func (c *Context) reset() {
 	c.returned = false
 }
 
+// With add self into given ctx by context.WithValue, and return the new context
+func (c *Context) With(ctx context.Context) context.Context {
+	return context.WithValue(ctx, contextKey, c)
+}
+
+// Body return the body bytes
 func (c *Context) Body() []byte {
 	if c.body != nil {
 		return c.body.B
@@ -72,10 +87,7 @@ func (c *Context) Err() error {
 // if no value is associated with key. Successive calls to Value with
 // the same key returns the same result.
 func (c *Context) Value(key any) any {
-	if key == ContextRequestKey {
-		return c.Request
-	}
-	if key == ContextKey {
+	if key == contextKey {
 		return c
 	}
 	if keyAsString, ok := key.(string); ok {
@@ -113,24 +125,7 @@ func (c *Context) Return(status int, data any, marshaler func(any) ([]byte, erro
 		// warn log
 		return
 	}
-	var (
-		content []byte
-		err     error
-	)
-	if data != nil {
-		content, err = marshaler(data)
-		if err != nil {
-			content, _ = json.Marshal(ResponseBody{
-				Code:    1,
-				Message: err.Error(),
-			})
-		}
-	}
-	if status <= 0 {
-		status = 200
-	}
-	c.Writer.WriteHeader(status)
-	c.Writer.Write(content)
+	Return(c.Writer, status, data, marshaler)
 	c.returned = true
 }
 
@@ -138,13 +133,11 @@ func (c *Context) SetContentType(s string) {
 	c.Writer.Header().Set("ContentType", s)
 }
 
-func (c *Context) JSON(status int, data any) {
-	c.SetContentType("application/json")
+func (c *Context) ReturnJSON(status int, data any) {
 	c.Return(status, data, json.Marshal)
 }
 
-func (c *Context) Text(status int, data any) {
-	c.SetContentType("text/plain")
+func (c *Context) ReturnText(status int, data any) {
 	c.Return(status, data, MarshalText)
 }
 
@@ -159,7 +152,11 @@ func (c *Context) Fail(status int, err error) {
 }
 
 func (c *Context) Failf(status int, msg string, args ...any) {
-	c.Fail(status, fmt.Errorf(msg, args...))
+	err := ResponseBody{
+		Code:    1,
+		Message: fmt.Errorf(msg, args...).Error(),
+	}
+	c.Return(status, err, json.Marshal)
 }
 
 func MarshalText(data any) ([]byte, error) {

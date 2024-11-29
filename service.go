@@ -19,7 +19,6 @@ type Service struct {
 	grpcHeaderPatterns []string
 	middlewares        []Middleware
 	marshaler          func(data any) ([]byte, error)
-	NotFoundHandler    http.Handler
 }
 
 const (
@@ -219,7 +218,7 @@ func (srv *Service) generateHandlerFunc(handler any, middlewares []Middleware) h
 		// parse the parameters from request
 		err = binding.New(nil).BindAndValidate(v, r, pathParams{req: r})
 		if err != nil {
-			ctx.JSON(400, ResponseBody{
+			ctx.ReturnJSON(400, ResponseBody{
 				Code:    400,
 				Message: err.Error(),
 			})
@@ -247,7 +246,7 @@ func (srv *Service) generateHandlerFunc(handler any, middlewares []Middleware) h
 			if status == 0 {
 				status = 1
 			}
-			ctx.JSON(200, ResponseBody{
+			ctx.ReturnJSON(200, ResponseBody{
 				Code:    status,
 				Message: err.Error(),
 			})
@@ -258,14 +257,14 @@ func (srv *Service) generateHandlerFunc(handler any, middlewares []Middleware) h
 		if data != nil {
 			if _, ok := data.(ResponseBody); ok {
 				// data's type is ResponseBody, response directly
-				ctx.JSON(200, data)
+				ctx.ReturnJSON(200, data)
 			} else {
 				value := reflect.ValueOf(data)
 				if value.Kind() == reflect.Slice && value.Len() == 0 {
 					// return empty array instread of null for nil slice
 					data = []struct{}{}
 				}
-				ctx.JSON(200, ResponseBody{Code: 0, Data: data})
+				ctx.ReturnJSON(200, ResponseBody{Code: 0, Data: data})
 			}
 			return
 		}
