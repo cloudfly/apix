@@ -133,7 +133,7 @@ func WithResponseMarshaler(marshaler func(any) ([]byte, error)) ServiceOption {
 // By default, only headers with 'grpcgateway-' key prefix, and permanent HTTP header(as specified by the IANA, e.g: Accept, Cookie, Host) will be forward.
 func UseGRPCHeaders(patterns ...string) ServiceOption {
 	return func(srv *Service) {
-		srv.grpc.headerPatterns = patterns
+		srv.grpcHeaderPatterns = patterns
 	}
 }
 
