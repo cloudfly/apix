@@ -8,10 +8,12 @@ import (
 	"reflect"
 	"sync"
 	"time"
+
+	"github.com/cloudfly/apix/bytespool"
 )
 
 var (
-	bbp *ByteBufferPool = &ByteBufferPool{}
+	bbp = &bytespool.ByteBufferPool{}
 )
 
 type ctxKeyType int
@@ -30,7 +32,7 @@ type Context struct {
 	mu       sync.RWMutex
 	Keys     map[string]any
 	srv      *Service
-	body     *ByteBuffer
+	body     *bytespool.ByteBuffer
 	returned bool
 }
 
