@@ -1,8 +1,6 @@
 module github.com/cloudfly/apix
 
-go 1.22.7
-
-toolchain go1.22.9
+go 1.22.9
 
 require (
 	github.com/bytedance/go-tagexpr/v2 v2.9.11
