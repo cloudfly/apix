@@ -187,11 +187,14 @@ func (g *Group) GROUP(p string, middlewares ...Middleware) *Group {
 
 func (srv *Service) generateHandlerFunc(handler any, middlewares []Middleware) http.HandlerFunc {
 	htype := 0
-	switch handler.(type) {
+	switch h := handler.(type) {
 	case Handler:
 		htype = 1
 	case HandlerCode:
 		htype = 2
+	case func(http.ResponseWriter, *http.Request):
+		handler = http.HandlerFunc(h)
+		htype = 3
 	case http.HandlerFunc:
 		htype = 3
 	case http.Handler:

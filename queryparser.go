@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cloudfly/timex"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/utilities"
 	"google.golang.org/genproto/protobuf/field_mask"
 	"google.golang.org/grpc/grpclog"
@@ -267,7 +268,7 @@ func parseMessage(msgDescriptor protoreflect.MessageDescriptor, value string) (p
 			msg = timestamppb.New(t)
 		}
 	case "google.protobuf.Duration":
-		millis, err := durationValue(value, 0)
+		millis, err := timex.ParseDuration(value)
 		if err != nil {
 			d, err := time.ParseDuration(value)
 			if err != nil {
