@@ -36,7 +36,11 @@ func (h *statusHijack) Write(body []byte) (int, error) {
 		}
 		return len(body), nil
 	}
-	return h.ResponseWriter.Write(body)
+	n, err := h.ResponseWriter.Write(body)
+	if flusher, ok := h.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+	return n, err
 }
 
 type grpcHandler struct {
