@@ -224,14 +224,15 @@ func (srv *Service) generateHandlerFunc(handler any, middlewares []Middleware) h
 				Str("method", r.Method).Str("path", r.URL.Path).Msg("HTTP request")
 		}()
 
-		// parse the parameters from request
-		err = binding.New(nil).BindAndValidate(v, r, pathParams{req: r})
-		if err != nil {
-			ctx.ReturnJSON(400, ResponseBody{
-				Code:    400,
-				Message: err.Error(),
-			})
-			return
+		if htype == 1 || htype == 2 {
+			// parse the parameters from request
+			if err = binding.New(nil).BindAndValidate(v, r, pathParams{req: r}); err != nil {
+				ctx.ReturnJSON(400, ResponseBody{
+					Code:    400,
+					Message: err.Error(),
+				})
+				return
+			}
 		}
 
 		// execute the handler
