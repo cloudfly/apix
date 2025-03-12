@@ -3,7 +3,6 @@ package apix
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -75,7 +74,6 @@ func newGRPCHandler(srv *Service) *grpcHandler {
 }
 
 func (gh *grpcHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	fmt.Println(gh, gh.srv)
 	if gh.srv.notFoundHandler != nil {
 		w = &statusHijack{
 			ResponseWriter: w,
